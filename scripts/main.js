@@ -7,8 +7,9 @@ const DRAIN_MAX_MS = 1600;
 const CHIP_DELAY_MS = 150;
 const CHIP_MS = 450;
 
-// bosses whose intro fill already played on this page
-const introPlayed = new Set();
+// Per-boss bar state that survives Boss Bar re-renders (it re-renders on every scene update):
+// uuid -> {shown: {remaining, pct}, animating: "intro" | "change" | null}
+const live = new Map();
 
 /* -------------------------------------------- */
 /*  Settings                                    */
@@ -74,7 +75,7 @@ Hooks.once("ready", () => {
     getHpPerLayer,
     setHpPerLayer: (actor, hp) => actor.setFlag(MODULE_ID, "hpPerLayer", Math.max(1, Math.round(hp))),
     refresh: refreshAll,
-    replayIntro: () => { introPlayed.clear(); rerenderAll(); }
+    replayIntro: () => { live.clear(); rerenderAll(); }
   };
 });
 
@@ -87,8 +88,21 @@ Hooks.on("renderBossBar", (app, element) => {
   const root = element instanceof HTMLElement ? element : element?.[0];
   if (!root) return;
   root.classList.add("bbl-enabled");
-  for (const li of root.querySelectorAll(".bar-list-item[data-uuid]")) buildItem(li);
+  const items = [...root.querySelectorAll(".bar-list-item[data-uuid]")];
+  forgetMissing(items.map(li => li.dataset.uuid));
+  for (const li of items) buildItem(li);
 });
+
+// A boss that leaves the Boss Bar plays its intro again the next time it is added
+Hooks.on("updateScene", (scene, changes) => {
+  if (scene !== game.scenes.viewed || !foundry.utils.hasProperty(changes, "flags.bossbar")) return;
+  forgetMissing((scene.getFlag("bossbar", "actors") ?? []).map(a => a.uuid));
+});
+
+function forgetMissing(present) {
+  const keep = new Set(present);
+  for (const uuid of live.keys()) if (!keep.has(uuid)) live.delete(uuid);
+}
 
 Hooks.on("updateActor", actor => refreshActor(actor));
 for (const hook of ["createActiveEffect", "updateActiveEffect", "deleteActiveEffect"]) {
@@ -191,12 +205,21 @@ function buildItem(li) {
     });
   }
 
-  const intro = Number(game.settings.get(MODULE_ID, "introSecondsPerBar")) > 0 && !introPlayed.has(li.dataset.uuid);
-  introPlayed.add(li.dataset.uuid);
-  updateItem(li, actor, {instant: !intro, intro});
+  const uuid = li.dataset.uuid;
+  root._bblUuid = uuid;
+  const prev = live.get(uuid);
+  if (!prev) {
+    // first time this boss shows up: play the intro
+    const intro = Number(game.settings.get(MODULE_ID, "introSecondsPerBar")) > 0;
+    live.set(uuid, {shown: null, animating: null});
+    updateItem(li, actor, {instant: !intro, intro});
+  } else {
+    // Boss Bar re-rendered the window: pick up exactly where the bar was (even mid-animation)
+    updateItem(li, actor, {resume: prev});
+  }
 }
 
-function updateItem(li, actor, {instant = false, intro = false} = {}) {
+function updateItem(li, actor, {instant = false, intro = false, resume = null} = {}) {
   const root = li.querySelector(".bbl-root");
   if (!root) return;
   const target = computeState(actor);
@@ -208,7 +231,8 @@ function updateItem(li, actor, {instant = false, intro = false} = {}) {
       <img src="${e.img}" alt="">
     </div>`).join("");
 
-  const shown = root._bblShown;
+  const entry = live.get(root._bblUuid);
+  const shown = resume?.shown ?? entry?.shown ?? null;
   if (instant || (!intro && !shown)) {
     cancelAnimation(root);
     paintBar(root, target.remaining);
@@ -223,8 +247,17 @@ function updateItem(li, actor, {instant = false, intro = false} = {}) {
     animateTo(root, {remaining: 1, pct: 0}, target, "intro");
     return;
   }
-  if (shown.remaining === target.remaining && Math.abs(shown.pct - target.pct) < 0.01) return;
-  animateTo(root, shown, target, "change");
+  if (resume) {
+    // fresh DOM after a re-render: draw the last shown state first
+    paintBar(root, shown.remaining);
+    setFill(root, shown.pct);
+    setChip(root, shown.pct);
+  }
+  const same = shown.remaining === target.remaining && Math.abs(shown.pct - target.pct) < 0.01;
+  if (same) return;
+  // an intro interrupted by a re-render keeps its intro pace; anything else animates as damage/heal
+  const mode = (resume?.animating ?? entry?.animating) === "intro" ? "intro" : "change";
+  animateTo(root, shown, target, mode);
 }
 
 /* -------------------------------------------- */
@@ -239,13 +272,19 @@ function paintBar(root, remaining) {
   root.style.setProperty("--bbl-front", remaining > 0 ? colors[((top % colors.length) + colors.length) % colors.length] : "transparent");
   root.querySelector(".bbl-back").style.background = remaining > 1 ? colors[(top + 1) % colors.length] : "transparent";
   root.querySelector(".bbl-count").textContent = layers > 1 ? `×${Math.max(0, remaining)}` : "";
-  root._bblShown = {...(root._bblShown ?? {pct: 0}), remaining};
+  remember(root, {remaining});
 }
 
 function setFill(root, pct) {
   root.querySelector(".bbl-fill").style.width = `${pct}%`;
   root.querySelector(".bbl-pct").textContent = `${Math.round(pct)}%`;
-  root._bblShown = {...(root._bblShown ?? {remaining: 0}), pct};
+  remember(root, {pct});
+}
+
+function remember(root, patch) {
+  const entry = live.get(root._bblUuid);
+  if (!entry) return;
+  entry.shown = {...(entry.shown ?? {remaining: 0, pct: 0}), ...patch};
 }
 
 function setChip(root, pct, {ms = 0, delay = 0} = {}) {
@@ -261,6 +300,8 @@ function setChip(root, pct, {ms = 0, delay = 0} = {}) {
 
 function cancelAnimation(root) {
   root._bblToken = null;
+  const entry = live.get(root._bblUuid);
+  if (entry) entry.animating = null;
 }
 
 // Split a change into per-bar segments: [{remaining, from, to}]
@@ -301,8 +342,13 @@ function tween(root, token, from, to, ms) {
 async function animateTo(root, from, to, mode) {
   const token = Symbol("bbl");
   root._bblToken = token;
+  const entry = live.get(root._bblUuid);
+  if (entry) entry.animating = mode;
   const segs = buildSegments(from, to);
-  if (!segs.length) return;
+  if (!segs.length) return finish();
+  function finish() {
+    if (root._bblToken === token && entry) entry.animating = null;
+  }
 
   let perSeg;
   if (mode === "intro") {
@@ -326,7 +372,9 @@ async function animateTo(root, from, to, mode) {
     setChip(root, seg.to, losing ? {ms: CHIP_MS, delay: CHIP_DELAY_MS} : {});
     if (losing && seg !== segs.at(-1)) await new Promise(r => setTimeout(r, 60));
   }
+  if (root._bblToken !== token) return;
   if (to.remaining <= 0) paintBar(root, 0);
+  finish();
 }
 
 /* -------------------------------------------- */
