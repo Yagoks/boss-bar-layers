@@ -15,3 +15,11 @@ A Foundry VTT v13 add-on for [theripper93's Boss Bar](https://github.com/theripp
 
 ## Install
 Manifest URL: `https://github.com/Yagoks/boss-bar-layers/releases/latest/download/module.json`
+
+## Same bar position for everyone (GM)
+```js
+// centered, 15% from the top of the screen, 60% of the screen wide
+game.modules.get("boss-bar-layers").api.setBarPositionForAll({top: 0.15, width: 0.6});
+```
+Each connected player gets the bar at that spot on their own screen (and it is saved as their position). They can still move it afterwards.
+

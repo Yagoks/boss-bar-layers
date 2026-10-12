@@ -67,6 +67,13 @@ Hooks.once("init", () => {
     default: true,
     onChange: () => refreshAll()
   });
+  // last "reposition for everyone" request this client already applied
+  game.settings.register(MODULE_ID, "appliedPositionNonce", {
+    scope: "client",
+    config: false,
+    type: String,
+    default: ""
+  });
 });
 
 Hooks.once("ready", () => {
@@ -75,9 +82,13 @@ Hooks.once("ready", () => {
     getHpPerLayer,
     setHpPerLayer: (actor, hp) => actor.setFlag(MODULE_ID, "hpPerLayer", Math.max(1, Math.round(hp))),
     refresh: refreshAll,
-    replayIntro: () => { live.clear(); rerenderAll(); }
+    replayIntro: () => { live.clear(); rerenderAll(); },
+    setBarPositionForAll
   };
+  applyPendingPosition(game.scenes.viewed);
 });
+
+Hooks.on("canvasReady", () => applyPendingPosition(game.scenes.viewed));
 
 /* -------------------------------------------- */
 /*  Hooks                                       */
@@ -95,7 +106,9 @@ Hooks.on("renderBossBar", (app, element) => {
 
 // A boss that leaves the Boss Bar plays its intro again the next time it is added
 Hooks.on("updateScene", (scene, changes) => {
-  if (scene !== game.scenes.viewed || !foundry.utils.hasProperty(changes, "flags.bossbar")) return;
+  if (scene !== game.scenes.viewed) return;
+  if (foundry.utils.hasProperty(changes, `flags.${MODULE_ID}.barPosition`)) applyPendingPosition(scene);
+  if (!foundry.utils.hasProperty(changes, "flags.bossbar")) return;
   forgetMissing((scene.getFlag("bossbar", "actors") ?? []).map(a => a.uuid));
 });
 
@@ -409,6 +422,43 @@ function rerenderAll() {
   }
   bar.classList.add("bbl-enabled");
   bar.querySelectorAll(".bar-list-item[data-uuid]").forEach(buildItem);
+}
+
+/* -------------------------------------------- */
+/*  Bar position for everyone                   */
+/* -------------------------------------------- */
+
+/**
+ * GM: put the Boss Bar at the same relative spot on every player's screen.
+ * Players can still drag it afterwards; this only re-applies when called again.
+ * @param {object} [options]
+ * @param {number} [options.top=0.15]   distance from the top, as a fraction of the screen height
+ * @param {number} [options.width=0.6]  bar width, as a fraction of the screen width (always centered)
+ * @param {Scene}  [options.scene]      defaults to the viewed scene
+ */
+async function setBarPositionForAll({top = 0.15, width = 0.6, scene = game.scenes.viewed} = {}) {
+  if (!game.user.isGM) return ui.notifications.warn("Boss Bar Layers: only the GM can reposition the bar for everyone.");
+  const data = {top: Number(top), width: Number(width), nonce: foundry.utils.randomID()};
+  await scene.setFlag(MODULE_ID, "barPosition", data);
+  applyPendingPosition(scene);
+}
+
+function applyPendingPosition(scene) {
+  const data = scene?.getFlag?.(MODULE_ID, "barPosition");
+  if (!data?.nonce || game.settings.get(MODULE_ID, "appliedPositionNonce") === data.nonce) return;
+  const width = Math.round(window.innerWidth * Math.min(1, Math.max(0.1, Number(data.width) || 0.6)));
+  const left = Math.round((window.innerWidth - width) / 2);
+  const top = Math.round(window.innerHeight * Math.min(0.95, Math.max(0, Number(data.top) || 0)));
+  const position = {width, left, top};
+  try { game.settings.set("bossbar", "barPosition", position); } catch (err) { console.warn(MODULE_ID, err); }
+  game.settings.set(MODULE_ID, "appliedPositionNonce", data.nonce);
+  // move a bar that is already open
+  const app = ui.bossBar ?? foundry.applications.instances.get("boss-bar");
+  if (app?.rendered) app.setPosition(position);
+  else {
+    const el = document.getElementById("boss-bar");
+    if (el) Object.assign(el.style, {left: `${left}px`, top: `${top}px`, width: `${width}px`});
+  }
 }
 
 async function promptLayers(actor) {
