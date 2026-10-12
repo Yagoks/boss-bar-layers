@@ -1,6 +1,15 @@
 const MODULE_ID = "boss-bar-layers";
 const NEGATIVE_EXCLUDED = new Set(["invisible", "transformed"]);
 
+// damage/heal animation across bars
+const DRAIN_MS_PER_BAR = 450;
+const DRAIN_MAX_MS = 1600;
+const CHIP_DELAY_MS = 150;
+const CHIP_MS = 450;
+
+// bosses whose intro fill already played on this page
+const introPlayed = new Set();
+
 /* -------------------------------------------- */
 /*  Settings                                    */
 /* -------------------------------------------- */
@@ -33,6 +42,22 @@ Hooks.once("init", () => {
     default: "#f4b6c2, #4f86d9, #6cc58f, #e0b84f, #a874d9",
     onChange: () => refreshAll()
   });
+  game.settings.register(MODULE_ID, "introSecondsPerBar", {
+    name: "Intro: seconds per bar",
+    hint: "When a boss bar appears it fills up bar by bar. Set to 0 to disable the intro.",
+    scope: "world",
+    config: true,
+    type: Number,
+    default: 2
+  });
+  game.settings.register(MODULE_ID, "introMaxSeconds", {
+    name: "Intro: maximum total seconds",
+    hint: "Bosses with many bars fill each bar faster so the whole intro never takes longer than this.",
+    scope: "world",
+    config: true,
+    type: Number,
+    default: 6
+  });
   game.settings.register(MODULE_ID, "showEffects", {
     name: "Show active effects",
     scope: "world",
@@ -48,7 +73,8 @@ Hooks.once("ready", () => {
   mod.api = {
     getHpPerLayer,
     setHpPerLayer: (actor, hp) => actor.setFlag(MODULE_ID, "hpPerLayer", Math.max(1, Math.round(hp))),
-    refresh: refreshAll
+    refresh: refreshAll,
+    replayIntro: () => { introPlayed.clear(); rerenderAll(); }
   };
 });
 
@@ -111,13 +137,7 @@ function computeState(actor) {
     const inLayer = top === layers - 1 ? clamped : perLayer - (lost - top * perLayer);
     pct = Math.max(0, Math.min(100, (inLayer / size) * 100));
   }
-  const colors = layerColors();
-  const colorOf = index => colors[index % colors.length];
-  return {
-    hp: clamped, max, layers, remaining, pct,
-    front: remaining > 0 ? colorOf(top) : "transparent",
-    back: remaining > 1 ? colorOf(top + 1) : "transparent"
-  };
+  return {hp: clamped, max, layers, remaining, pct};
 }
 
 function activeEffects(actor) {
@@ -170,45 +190,148 @@ function buildItem(li) {
       promptLayers(actor);
     });
   }
-  updateItem(li, actor, {instant: true});
+
+  const intro = Number(game.settings.get(MODULE_ID, "introSecondsPerBar")) > 0 && !introPlayed.has(li.dataset.uuid);
+  introPlayed.add(li.dataset.uuid);
+  updateItem(li, actor, {instant: !intro, intro});
 }
 
-function updateItem(li, actor, {instant = false} = {}) {
+function updateItem(li, actor, {instant = false, intro = false} = {}) {
   const root = li.querySelector(".bbl-root");
   if (!root) return;
-  const s = computeState(actor);
-  const prevLayer = Number(root.dataset.layer ?? s.remaining);
-  const layerChanged = prevLayer !== s.remaining;
-
-  const fill = root.querySelector(".bbl-fill");
-  const chip = root.querySelector(".bbl-chip");
-  const back = root.querySelector(".bbl-back");
-  root.style.setProperty("--bbl-front", s.front);
-  back.style.background = s.back;
-
-  if (instant || layerChanged) {
-    // jump straight to the new layer without animating across bars
-    for (const el of [fill, chip]) el.classList.add("bbl-no-anim");
-    fill.style.width = `${s.pct}%`;
-    chip.style.width = `${s.pct}%`;
-    void fill.offsetWidth;
-    for (const el of [fill, chip]) el.classList.remove("bbl-no-anim");
-  } else {
-    fill.style.width = `${s.pct}%`;
-    chip.style.width = `${s.pct}%`;
-  }
-  root.dataset.layer = String(s.remaining);
-
-  root.querySelector(".bbl-pct").textContent = `${Math.round(s.pct)}%`;
-  // number of bars still showing HP, including the one being drained
-  root.querySelector(".bbl-count").textContent = s.layers > 1 ? `×${s.remaining}` : "";
+  const target = computeState(actor);
+  root._bblLayers = target.layers;
 
   const effects = root.querySelector(".bbl-effects");
   effects.innerHTML = activeEffects(actor).map(e => `
     <div class="bbl-effect${e.negative ? " negative" : ""}" data-tooltip="${foundry.utils.escapeHTML(e.name)}">
       <img src="${e.img}" alt="">
     </div>`).join("");
+
+  const shown = root._bblShown;
+  if (instant || (!intro && !shown)) {
+    cancelAnimation(root);
+    paintBar(root, target.remaining);
+    setFill(root, target.pct);
+    setChip(root, target.pct);
+    return;
+  }
+  if (intro) {
+    paintBar(root, 1);
+    setFill(root, 0);
+    setChip(root, 0);
+    animateTo(root, {remaining: 1, pct: 0}, target, "intro");
+    return;
+  }
+  if (shown.remaining === target.remaining && Math.abs(shown.pct - target.pct) < 0.01) return;
+  animateTo(root, shown, target, "change");
 }
+
+/* -------------------------------------------- */
+/*  Bar painting                                */
+/* -------------------------------------------- */
+
+// colors for the bar that is currently showing as "remaining" r (1 = bottom bar)
+function paintBar(root, remaining) {
+  const layers = root._bblLayers ?? 1;
+  const colors = layerColors();
+  const top = layers - remaining;
+  root.style.setProperty("--bbl-front", remaining > 0 ? colors[((top % colors.length) + colors.length) % colors.length] : "transparent");
+  root.querySelector(".bbl-back").style.background = remaining > 1 ? colors[(top + 1) % colors.length] : "transparent";
+  root.querySelector(".bbl-count").textContent = layers > 1 ? `×${Math.max(0, remaining)}` : "";
+  root._bblShown = {...(root._bblShown ?? {pct: 0}), remaining};
+}
+
+function setFill(root, pct) {
+  root.querySelector(".bbl-fill").style.width = `${pct}%`;
+  root.querySelector(".bbl-pct").textContent = `${Math.round(pct)}%`;
+  root._bblShown = {...(root._bblShown ?? {remaining: 0}), pct};
+}
+
+function setChip(root, pct, {ms = 0, delay = 0} = {}) {
+  const chip = root.querySelector(".bbl-chip");
+  chip.style.transition = ms ? `width ${ms}ms ease-in ${delay}ms` : "none";
+  if (!ms) void chip.offsetWidth;
+  chip.style.width = `${pct}%`;
+}
+
+/* -------------------------------------------- */
+/*  Animation                                   */
+/* -------------------------------------------- */
+
+function cancelAnimation(root) {
+  root._bblToken = null;
+}
+
+// Split a change into per-bar segments: [{remaining, from, to}]
+function buildSegments(from, to) {
+  const segs = [];
+  if (to.remaining < from.remaining || (to.remaining === from.remaining && to.pct < from.pct)) {
+    // losing HP: drain the current bar, then each bar below, down to the target
+    if (from.remaining === to.remaining) return [{remaining: from.remaining, from: from.pct, to: to.pct}];
+    segs.push({remaining: from.remaining, from: from.pct, to: 0});
+    for (let r = from.remaining - 1; r > Math.max(to.remaining, 0); r--) segs.push({remaining: r, from: 100, to: 0});
+    if (to.remaining > 0) segs.push({remaining: to.remaining, from: 100, to: to.pct});
+  } else {
+    // gaining HP (heal or intro): fill the current bar, then each bar above, up to the target
+    const start = Math.max(from.remaining, 1);
+    if (start === to.remaining) return [{remaining: start, from: from.remaining ? from.pct : 0, to: to.pct}];
+    segs.push({remaining: start, from: from.remaining ? from.pct : 0, to: 100});
+    for (let r = start + 1; r < to.remaining; r++) segs.push({remaining: r, from: 0, to: 100});
+    segs.push({remaining: to.remaining, from: 0, to: to.pct});
+  }
+  return segs;
+}
+
+function tween(root, token, from, to, ms) {
+  return new Promise(resolve => {
+    const start = performance.now();
+    const ease = t => 1 - Math.pow(1 - t, 2);
+    const step = now => {
+      if (root._bblToken !== token || !root.isConnected) return resolve(false);
+      const t = ms > 0 ? Math.min(1, (now - start) / ms) : 1;
+      setFill(root, from + (to - from) * ease(t));
+      if (t < 1) requestAnimationFrame(step);
+      else resolve(true);
+    };
+    requestAnimationFrame(step);
+  });
+}
+
+async function animateTo(root, from, to, mode) {
+  const token = Symbol("bbl");
+  root._bblToken = token;
+  const segs = buildSegments(from, to);
+  if (!segs.length) return;
+
+  let perSeg;
+  if (mode === "intro") {
+    const perBar = Math.max(0, Number(game.settings.get(MODULE_ID, "introSecondsPerBar")) || 0) * 1000;
+    const maxTotal = Math.max(0, Number(game.settings.get(MODULE_ID, "introMaxSeconds")) || 0) * 1000;
+    perSeg = maxTotal > 0 ? Math.min(perBar, maxTotal / segs.length) : perBar;
+  } else {
+    perSeg = Math.min(DRAIN_MS_PER_BAR, DRAIN_MAX_MS / segs.length);
+  }
+
+  for (const seg of segs) {
+    if (root._bblToken !== token) return;
+    paintBar(root, seg.remaining);
+    const losing = seg.to < seg.from;
+    // the white chip marks the HP being lost and trails behind the bar
+    setChip(root, seg.from);
+    // partial bars in an intro/heal scale their time to the distance travelled
+    const ms = perSeg * Math.max(0.15, Math.abs(seg.to - seg.from) / 100);
+    const ok = await tween(root, token, seg.from, seg.to, ms);
+    if (!ok) return;
+    setChip(root, seg.to, losing ? {ms: CHIP_MS, delay: CHIP_DELAY_MS} : {});
+    if (losing && seg !== segs.at(-1)) await new Promise(r => setTimeout(r, 60));
+  }
+  if (to.remaining <= 0) paintBar(root, 0);
+}
+
+/* -------------------------------------------- */
+/*  Refresh                                     */
+/* -------------------------------------------- */
 
 function refreshActor(actor) {
   if (!game.settings.get(MODULE_ID, "enabled")) return;
