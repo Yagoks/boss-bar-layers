@@ -8,7 +8,6 @@
 #boss-bar .bbl-root {
   --bbl-front: #f4b6c2;
   --bbl-bar-height: 16px;
-  --bbl-portrait: 64px;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -16,27 +15,6 @@
   font-family: "Signika", "Noto Sans", sans-serif;
   color: #fff;
   user-select: none;
-}
-
-/* Portrait -------------------------------------------------- */
-#boss-bar .bbl-portrait {
-  flex: 0 0 var(--bbl-portrait);
-  width: var(--bbl-portrait);
-  height: var(--bbl-portrait);
-  border-radius: 50%;
-  padding: 3px;
-  background: radial-gradient(circle at 50% 35%, #f2d9ff 0%, #b46cff 45%, #4b1e8f 100%);
-  box-shadow: 0 0 10px 2px rgba(190, 120, 255, 0.75), inset 0 0 6px rgba(0, 0, 0, 0.6);
-  align-self: flex-start;
-  margin-top: 6px;
-}
-#boss-bar .bbl-portrait img {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 2px solid rgba(20, 10, 40, 0.9);
-  background: #1b1430;
 }
 
 /* Name + bar ------------------------------------------------ */
@@ -49,7 +27,7 @@
 }
 #boss-bar .bbl-name {
   text-align: center;
-  font-size: 17px;
+  font-size: 24px;
   line-height: 1.15;
   font-weight: 600;
   letter-spacing: 0.3px;
@@ -58,7 +36,13 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+#boss-bar .bbl-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
 #boss-bar .bbl-bar {
+  flex: 1 1 auto;
   position: relative;
   height: var(--bbl-bar-height);
   border: 1px solid rgba(0, 0, 0, 0.9);
@@ -148,55 +132,12 @@
   background: #e21d1d;
 }
 
-/* Right side: ×N + legendary gauges ------------------------- */
-#boss-bar .bbl-side {
-  flex: 0 0 auto;
-  min-width: 44px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  align-self: stretch;
-  justify-content: center;
-  gap: 4px;
-  padding-top: 22px;
-}
+/* ×N remaining bars, next to the bar ------------------------ */
 #boss-bar .bbl-count {
+  flex: 0 0 auto;
+  min-width: 34px;
   font-size: 18px;
   font-weight: 700;
   line-height: 1;
-  text-shadow: 0 0 3px #000, 0 0 6px #000;
-  min-height: 18px;
-}
-#boss-bar .bbl-gauges {
-  display: flex;
-  gap: 6px;
-}
-#boss-bar .bbl-gauge {
-  --bbl-gauge: 0%;
-  position: relative;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background:
-    radial-gradient(circle, #6b3d00 0 52%, transparent 53%),
-    conic-gradient(#ffcf4a var(--bbl-gauge), rgba(60, 40, 10, 0.9) 0);
-  box-shadow: 0 0 6px 2px rgba(255, 190, 60, 0.55);
-}
-#boss-bar .bbl-gauge i {
-  font-size: 16px;
-  color: #ffd85e;
-  text-shadow: 0 0 4px #ff9d00;
-}
-#boss-bar .bbl-gauge span {
-  position: absolute;
-  bottom: -16px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 13px;
-  font-weight: 700;
-  white-space: nowrap;
-  text-shadow: 0 0 3px #000, 0 0 5px #000;
+  text-shadow: 0 0 3px #000, 0 0 6px #000, 1px 1px 0 #000;
 }

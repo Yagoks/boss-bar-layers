@@ -15,13 +15,13 @@ Hooks.once("init", () => {
     default: true,
     onChange: () => rerenderAll()
   });
-  game.settings.register(MODULE_ID, "defaultLayers", {
-    name: "Default number of layers",
-    hint: "HP layers for bosses without their own value. Right-click a boss bar (GM) to set it per boss.",
+  game.settings.register(MODULE_ID, "hpPerLayer", {
+    name: "HP per bar",
+    hint: "How many hit points make one full bar, for bosses without their own value. Right-click a boss bar (GM) to set it per boss.",
     scope: "world",
     config: true,
     type: Number,
-    default: 3,
+    default: 30,
     onChange: () => refreshAll()
   });
   game.settings.register(MODULE_ID, "layerColors", {
@@ -46,8 +46,8 @@ Hooks.once("init", () => {
 Hooks.once("ready", () => {
   const mod = game.modules.get(MODULE_ID);
   mod.api = {
-    getLayers,
-    setLayers: (actor, layers) => actor.setFlag(MODULE_ID, "layers", Math.max(1, Math.round(layers))),
+    getHpPerLayer,
+    setHpPerLayer: (actor, hp) => actor.setFlag(MODULE_ID, "hpPerLayer", Math.max(1, Math.round(hp))),
     refresh: refreshAll
   };
 });
@@ -80,10 +80,10 @@ function bossbarSetting(key, fallback) {
   try { return game.settings.get("bossbar", key) ?? fallback; } catch { return fallback; }
 }
 
-function getLayers(actor) {
-  const own = Number(actor?.flags?.[MODULE_ID]?.layers);
+function getHpPerLayer(actor) {
+  const own = Number(actor?.flags?.[MODULE_ID]?.hpPerLayer);
   if (Number.isFinite(own) && own >= 1) return Math.round(own);
-  return Math.max(1, Math.round(Number(game.settings.get(MODULE_ID, "defaultLayers")) || 1));
+  return Math.max(1, Math.round(Number(game.settings.get(MODULE_ID, "hpPerLayer")) || 30));
 }
 
 function layerColors() {
@@ -96,34 +96,28 @@ function computeState(actor) {
   const sys = actor.system;
   const hp = Number(foundry.utils.getProperty(sys, bossbarSetting("currentHpPath", "attributes.hp.value"))) || 0;
   const max = Math.max(1, Number(foundry.utils.getProperty(sys, bossbarSetting("maxHpPath", "attributes.hp.max"))) || 1);
-  const layers = getLayers(actor);
-  const perLayer = max / layers;
+  const perLayer = getHpPerLayer(actor);
   const clamped = Math.min(Math.max(hp, 0), max);
-  // current layer counted from the bottom (1 = last bar)
-  const current = clamped <= 0 ? 0 : Math.min(layers, Math.ceil(clamped / perLayer - 1e-9));
-  const inLayer = current ? clamped - (current - 1) * perLayer : 0;
-  const pct = current ? Math.max(0, Math.min(100, (inLayer / perLayer) * 100)) : 0;
+  // Full bars from the top; the last (bottom) bar holds whatever is left over.
+  const layers = Math.max(1, Math.ceil(max / perLayer - 1e-9));
+  const lastSize = max - (layers - 1) * perLayer;
+  const lost = max - clamped;
+  // index of the bar being drained, counted from the top (0 = top bar)
+  const top = clamped <= 0 ? layers : Math.min(layers - 1, Math.floor(lost / perLayer + 1e-9));
+  const remaining = layers - top; // bars still showing HP, including the current one
+  let pct = 0;
+  if (clamped > 0) {
+    const size = top === layers - 1 ? lastSize : perLayer;
+    const inLayer = top === layers - 1 ? clamped : perLayer - (lost - top * perLayer);
+    pct = Math.max(0, Math.min(100, (inLayer / size) * 100));
+  }
   const colors = layerColors();
-  const colorOf = layer => colors[(layers - layer) % colors.length];
+  const colorOf = index => colors[index % colors.length];
   return {
-    hp: clamped, max, layers, current, pct,
-    front: current ? colorOf(current) : "transparent",
-    back: current > 1 ? colorOf(current - 1) : "transparent"
+    hp: clamped, max, layers, remaining, pct,
+    front: remaining > 0 ? colorOf(top) : "transparent",
+    back: remaining > 1 ? colorOf(top + 1) : "transparent"
   };
-}
-
-function legendaryGauges(actor) {
-  const res = actor.system.resources ?? {};
-  const out = [];
-  const add = (data, icon, label) => {
-    const max = Number(data?.max) || 0;
-    if (max <= 0) return;
-    const value = Math.max(0, Math.min(max, Number(data?.value) || 0));
-    out.push({value, max, icon, label});
-  };
-  add(res.legact, "fa-solid fa-infinity", "Legendary Actions");
-  add(res.legres, "fa-solid fa-shield-halved", "Legendary Resistances");
-  return out;
 }
 
 function activeEffects(actor) {
@@ -154,20 +148,18 @@ function buildItem(li) {
   const root = document.createElement("div");
   root.className = "bbl-root";
   root.innerHTML = `
-    <div class="bbl-portrait"><img src="${actor.img}" alt=""></div>
     <div class="bbl-main">
       <div class="bbl-name"${hideName ? ' style="visibility:hidden"' : ""}>${foundry.utils.escapeHTML(actor.name)}</div>
-      <div class="bbl-bar">
-        <div class="bbl-back"></div>
-        <div class="bbl-chip"></div>
-        <div class="bbl-fill"></div>
-        <div class="bbl-pct"></div>
+      <div class="bbl-row">
+        <div class="bbl-bar">
+          <div class="bbl-back"></div>
+          <div class="bbl-chip"></div>
+          <div class="bbl-fill"></div>
+          <div class="bbl-pct"></div>
+        </div>
+        <div class="bbl-count"></div>
       </div>
       <div class="bbl-effects"></div>
-    </div>
-    <div class="bbl-side">
-      <div class="bbl-count"></div>
-      <div class="bbl-gauges"></div>
     </div>`;
   li.append(root);
 
@@ -185,8 +177,8 @@ function updateItem(li, actor, {instant = false} = {}) {
   const root = li.querySelector(".bbl-root");
   if (!root) return;
   const s = computeState(actor);
-  const prevLayer = Number(root.dataset.layer ?? s.current);
-  const layerChanged = prevLayer !== s.current;
+  const prevLayer = Number(root.dataset.layer ?? s.remaining);
+  const layerChanged = prevLayer !== s.remaining;
 
   const fill = root.querySelector(".bbl-fill");
   const chip = root.querySelector(".bbl-chip");
@@ -205,18 +197,11 @@ function updateItem(li, actor, {instant = false} = {}) {
     fill.style.width = `${s.pct}%`;
     chip.style.width = `${s.pct}%`;
   }
-  root.dataset.layer = String(s.current);
+  root.dataset.layer = String(s.remaining);
 
   root.querySelector(".bbl-pct").textContent = `${Math.round(s.pct)}%`;
-  const count = root.querySelector(".bbl-count");
-  count.textContent = s.current > 1 ? `×${s.current}` : "";
-
-  const gauges = root.querySelector(".bbl-gauges");
-  gauges.innerHTML = legendaryGauges(actor).map(g => `
-    <div class="bbl-gauge" data-tooltip="${g.label}" style="--bbl-gauge:${(g.value / g.max) * 100}%">
-      <i class="${g.icon}"></i>
-      <span>${g.value}/${g.max}</span>
-    </div>`).join("");
+  // number of bars still showing HP, including the one being drained
+  root.querySelector(".bbl-count").textContent = s.layers > 1 ? `×${s.remaining}` : "";
 
   const effects = root.querySelector(".bbl-effects");
   effects.innerHTML = activeEffects(actor).map(e => `
@@ -256,16 +241,16 @@ function rerenderAll() {
 }
 
 async function promptLayers(actor) {
-  const current = getLayers(actor);
+  const current = getHpPerLayer(actor);
   const value = await foundry.applications.api.DialogV2.prompt({
     window: {title: `Boss Bar Layers — ${actor.name}`},
-    content: `<div class="form-group"><label>Number of HP layers</label>
-      <input type="number" name="layers" min="1" step="1" value="${current}" autofocus></div>
-      <p class="hint">The maximum HP is split evenly between the layers.</p>`,
-    ok: {label: "Save", callback: (event, button) => Number(button.form.elements.layers.value)},
+    content: `<div class="form-group"><label>HP per bar</label>
+      <input type="number" name="hpPerLayer" min="1" step="1" value="${current}" autofocus></div>
+      <p class="hint">Each full bar holds this many hit points; the last bar holds the remainder.</p>`,
+    ok: {label: "Save", callback: (event, button) => Number(button.form.elements.hpPerLayer.value)},
     rejectClose: false
   });
   if (!Number.isFinite(value) || value < 1) return;
-  await actor.setFlag(MODULE_ID, "layers", Math.round(value));
+  await actor.setFlag(MODULE_ID, "hpPerLayer", Math.round(value));
   refreshAll();
 }
