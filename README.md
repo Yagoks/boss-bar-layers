@@ -4,6 +4,8 @@ A Foundry VTT v13 add-on for [theripper93's Boss Bar](https://github.com/theripp
 
 - HP split into bars of a fixed size (default 30 HP, per boss override), with an `×N` counter of remaining bars next to the bar
 - Current layer drawn over the next layer's color, percentage in the middle
+- Intro animation: bars fill up one by one when the boss appears (seconds per bar + total cap in settings)
+- Damage and healing animate bar by bar, with a white trail showing the HP lost
 - Active effects (red arrow on negative conditions)
 
 ## Usage
