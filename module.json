@@ -1,7 +1,7 @@
 {
   "id": "boss-bar-layers",
   "title": "Boss Bar Layers",
-  "description": "Restyles theripper93's Boss Bar into a layered, multi-bar boss health bar (Korean MMO style): stacked HP layers with an ×N counter, portrait, active effects and legendary action/resistance gauges.",
+  "description": "Restyles theripper93's Boss Bar into a layered, multi-bar boss health bar (Korean MMO style): HP split into fixed-size bars with an ×N counter of remaining bars, plus active effects.",
   "version": "1.1.0",
   "authors": [
     {
