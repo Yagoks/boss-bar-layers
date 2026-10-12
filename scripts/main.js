@@ -81,7 +81,7 @@ function bossbarSetting(key, fallback) {
 }
 
 function getLayers(actor) {
-  const own = Number(actor?.getFlag(MODULE_ID, "layers"));
+  const own = Number(actor?.flags?.[MODULE_ID]?.layers);
   if (Number.isFinite(own) && own >= 1) return Math.round(own);
   return Math.max(1, Math.round(Number(game.settings.get(MODULE_ID, "defaultLayers")) || 1));
 }
