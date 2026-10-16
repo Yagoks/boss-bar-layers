@@ -2,7 +2,7 @@
   "id": "boss-bar-layers",
   "title": "Boss Bar Layers",
   "description": "Restyles theripper93's Boss Bar into a layered, multi-bar boss health bar (Korean MMO style): HP split into fixed-size bars with an ×N counter of remaining bars, plus active effects.",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "authors": [
     {
       "name": "Yagoks"
@@ -31,5 +31,5 @@
   ],
   "url": "https://github.com/Yagoks/boss-bar-layers",
   "manifest": "https://github.com/Yagoks/boss-bar-layers/releases/latest/download/module.json",
-  "download": "https://github.com/Yagoks/boss-bar-layers/releases/download/v1.5.0/module.zip"
+  "download": "https://github.com/Yagoks/boss-bar-layers/releases/download/v1.6.0/module.zip"
 }

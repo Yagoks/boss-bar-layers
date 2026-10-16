@@ -15,7 +15,13 @@ const THORN_FONTS = {
   "Rock Salt": "Rock+Salt",
   "Permanent Marker": "Permanent+Marker"
 };
-const thorns = () => game.settings.get(MODULE_ID, "style") === "thorns";
+// Our looks are Boss Bar styles: they show up in each boss's style menu and macros can pick them by id.
+const OUR_STYLES = {"bbl-layers": "Layered (Boss Bar Layers)", "bbl-thorns": "Thorns (Boss Bar Layers)"};
+
+/** The Boss Bar style chosen for this boss on the viewed scene ({uuid, style, hideName} entries). */
+function styleOf(uuid, scene = game.scenes.viewed) {
+  return (scene?.getFlag("bossbar", "actors") ?? []).find(a => a.uuid === uuid)?.style ?? null;
+}
 
 function loadFont(name) {
   const family = THORN_FONTS[name];
@@ -37,8 +43,8 @@ const live = new Map();
 
 Hooks.once("init", () => {
   game.settings.register(MODULE_ID, "enabled", {
-    name: "Enable layered boss bars",
-    hint: "Replace the Boss Bar look with stacked HP layers.",
+    name: "Enable Boss Bar Layers styles",
+    hint: "Adds the styles \"Layered (Boss Bar Layers)\" and \"Thorns (Boss Bar Layers)\" to Boss Bar. Pick them per boss in the Boss Bar configuration; bosses with any other style keep Boss Bar's own look.",
     scope: "world",
     config: true,
     type: Boolean,
@@ -78,16 +84,6 @@ Hooks.once("init", () => {
     config: true,
     type: Number,
     default: 6
-  });
-  game.settings.register(MODULE_ID, "style", {
-    name: "Bar style",
-    hint: "Layered: stacked bars with an ×N counter (MMO). Thorns: one thin bar split into segments, wrapped in black thorns, with the name in a brush font (dark fantasy).",
-    scope: "world",
-    config: true,
-    type: String,
-    choices: {layers: "Layered (MMO)", thorns: "Thorns (dark fantasy)"},
-    default: "layers",
-    onChange: () => { live.clear(); rerenderAll(); }
   });
   game.settings.register(MODULE_ID, "thornFont", {
     name: "Thorns style: name font",
@@ -131,10 +127,28 @@ Hooks.once("ready", () => {
     setHpPerLayer: (actor, hp) => actor.setFlag(MODULE_ID, "hpPerLayer", Math.max(1, Math.round(hp))),
     refresh: refreshAll,
     replayIntro: () => { live.clear(); rerenderAll(); },
-    setBarPositionForAll
+    setBarPositionForAll,
+    styles: Object.keys(OUR_STYLES)
   };
   applyPendingPosition(game.scenes.viewed);
+  registerStyles();
 });
+
+/** Add our styles to Boss Bar's style list (once, by the active GM), copying its default style's base values. */
+async function registerStyles() {
+  if (!game.users.activeGM?.isSelf) return;
+  let styles;
+  try { styles = foundry.utils.deepClone(game.settings.get("bossbar", "barStyles")); } catch { return; }
+  if (!Array.isArray(styles)) return;
+  const base = styles.find(st => st.id === "default") ?? styles[0] ?? {};
+  let changed = false;
+  for (const [id, name] of Object.entries(OUR_STYLES)) {
+    if (styles.some(st => st.id === id)) continue;
+    styles.push({...foundry.utils.deepClone(base), id, name});
+    changed = true;
+  }
+  if (changed) await game.settings.set("bossbar", "barStyles", styles);
+}
 
 Hooks.on("canvasReady", () => applyPendingPosition(game.scenes.viewed));
 
@@ -148,9 +162,18 @@ Hooks.on("renderBossBar", (app, element) => {
   if (!root) return;
   root.classList.add("bbl-enabled");
   const items = [...root.querySelectorAll(".bar-list-item[data-uuid]")];
-  forgetMissing(items.map(li => li.dataset.uuid));
-  for (const li of items) buildItem(li);
+  forgetMissing(items.filter(li => OUR_STYLES[styleOf(li.dataset.uuid)]).map(li => li.dataset.uuid));
+  for (const li of items) processItem(li);
 });
+
+/** Build our bar on a boss that uses one of our styles; leave every other style to Boss Bar. */
+function processItem(li) {
+  const style = styleOf(li.dataset.uuid);
+  if (OUR_STYLES[style]) return buildItem(li, style);
+  li.classList.remove("bbl-item");
+  li.querySelector(".bbl-root")?.remove();
+  live.delete(li.dataset.uuid);
+}
 
 // A boss that leaves the Boss Bar plays its intro again the next time it is added
 Hooks.on("updateScene", (scene, changes) => {
@@ -233,7 +256,7 @@ function activeEffects(actor) {
 /*  Rendering                                   */
 /* -------------------------------------------- */
 
-function buildItem(li) {
+function buildItem(li, style) {
   const actor = fromUuidSync(li.dataset.uuid);
   if (!actor) return;
   li.classList.add("bbl-item");
@@ -242,7 +265,7 @@ function buildItem(li) {
 
   const root = document.createElement("div");
   root.className = "bbl-root";
-  if (thorns()) buildThorns(root, actor, hideName);
+  if (style === "bbl-thorns") buildThorns(root, actor, hideName);
   else root.innerHTML = `
     <div class="bbl-main">
       <div class="bbl-name"${hideName ? ' style="visibility:hidden"' : ""}>${foundry.utils.escapeHTML(actor.name)}</div>
@@ -597,7 +620,7 @@ function rerenderAll() {
     return;
   }
   bar.classList.add("bbl-enabled");
-  bar.querySelectorAll(".bar-list-item[data-uuid]").forEach(buildItem);
+  bar.querySelectorAll(".bar-list-item[data-uuid]").forEach(processItem);
 }
 
 /* -------------------------------------------- */
