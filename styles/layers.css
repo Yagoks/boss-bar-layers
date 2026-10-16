@@ -162,6 +162,7 @@
   overflow: visible;
 }
 #boss-bar .bbl-thorns .bbl-initial { font-size: 1.3em; }
+#boss-bar .bbl-thorns .bbl-word + .bbl-word { margin-left: 0.35em; }
 #boss-bar .bbl-thornbar {
   position: relative;
   height: 14px;
