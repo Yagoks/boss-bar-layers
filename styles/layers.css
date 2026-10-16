@@ -139,3 +139,85 @@
   line-height: 1;
   text-shadow: 0 0 3px #000, 0 0 6px #000, 1px 1px 0 #000;
 }
+
+/* Thorns style (dark fantasy) -------------------------------- */
+#boss-bar .bbl-root.bbl-thorns {
+  --bbl-thorn-color: #ff5a1f;
+  --bbl-thorn-font: "Rock Salt";
+  display: block;
+  padding: 4px 48px 12px;
+}
+#boss-bar .bbl-thorns .bbl-main { gap: 0; align-items: stretch; }
+#boss-bar .bbl-thorns .bbl-name {
+  position: relative;
+  z-index: 2;
+  margin-bottom: -6px;
+  font-family: var(--bbl-thorn-font), "Signika", cursive;
+  font-weight: 400;
+  font-size: 30px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #f4ece2;
+  text-shadow: 0 0 2px #000, 0 0 6px #000, 0 0 14px rgba(0, 0, 0, 0.9);
+  overflow: visible;
+}
+#boss-bar .bbl-thorns .bbl-initial { font-size: 1.3em; }
+#boss-bar .bbl-thornbar {
+  position: relative;
+  height: 14px;
+  margin: 18px 0;
+}
+#boss-bar .bbl-briars {
+  position: absolute;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 1;
+}
+#boss-bar .bbl-briars .bbl-vine { fill: none; stroke: #050404; stroke-width: 1.6; stroke-linejoin: round; }
+#boss-bar .bbl-briars .bbl-thorn { fill: #050404; stroke: #050404; stroke-width: 0.6; }
+#boss-bar .bbl-briars .bbl-spike { fill: #050404; }
+#boss-bar .bbl-segs {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  gap: 6px;
+  padding: 0 2px;
+  background: #050404;
+}
+#boss-bar .bbl-seg {
+  position: relative;
+  flex-basis: 0;
+  min-width: 4px;
+  height: 100%;
+  background: rgba(60, 14, 6, 0.85);
+  overflow: hidden;
+}
+#boss-bar .bbl-seg > div { position: absolute; top: 0; left: 0; height: 100%; }
+#boss-bar .bbl-thorns .bbl-chip { background: #ffd2a8; opacity: 0.9; }
+#boss-bar .bbl-thorns .bbl-fill {
+  border-right: none;
+  background: linear-gradient(to bottom,
+    color-mix(in srgb, var(--bbl-thorn-color) 65%, #fff) 0%,
+    var(--bbl-thorn-color) 40%,
+    color-mix(in srgb, var(--bbl-thorn-color) 65%, #000) 100%);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--bbl-thorn-color) 70%, transparent);
+}
+#boss-bar .bbl-thorns .bbl-effects {
+  justify-content: center;
+  gap: 14px;
+  padding-top: 2px;
+}
+#boss-bar .bbl-effect-tag {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: "Signika", sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #d8d2c8;
+  text-shadow: 0 0 3px #000, 0 0 6px #000;
+}
+#boss-bar .bbl-effect-tag img { width: 18px; height: 18px; border: none; object-fit: contain; filter: drop-shadow(0 0 2px #000); }
+#boss-bar .bbl-effect-tag.negative { color: #ff8f7a; }

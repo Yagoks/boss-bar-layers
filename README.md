@@ -8,6 +8,14 @@ A Foundry VTT v13 add-on for [theripper93's Boss Bar](https://github.com/theripp
 - Damage and healing animate bar by bar, with a white trail showing the HP lost
 - Active effects (red arrow on negative conditions)
 
+## Styles
+Pick one in the module settings (**Bar style**):
+- **Layered (MMO):** stacked bars with an `×N` counter, the percentage in the middle and effect icons.
+- **Thorns (dark fantasy):** the boss name in a brush font above one thin bar wrapped in black thorns, with spikes flaring
+  out of both ends. Each HP layer is a segment, and the bar drains from right to left. Effects are listed below with their
+  names. The name font and the bar color are in the settings: Rock Salt, Permanent Marker, Cabin Sketch or Fredericka the
+  Great, from Google Fonts under the SIL Open Font License.
+
 ## Usage
 1. Install and enable **Bossbar** and **Boss Bar Layers**.
 2. Add a boss to the scene with Boss Bar as usual.

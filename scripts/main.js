@@ -7,6 +7,25 @@ const DRAIN_MAX_MS = 1600;
 const CHIP_DELAY_MS = 150;
 const CHIP_MS = 450;
 
+// Brush/sketch fonts for the Thorns style (Google Fonts, SIL Open Font License), loaded on demand.
+const THORN_FONTS = {
+  "Rock Salt": "Rock+Salt",
+  "Permanent Marker": "Permanent+Marker",
+  "Cabin Sketch": "Cabin+Sketch:wght@700",
+  "Fredericka the Great": "Fredericka+the+Great"
+};
+const thorns = () => game.settings.get(MODULE_ID, "style") === "thorns";
+
+function loadFont(name) {
+  const family = THORN_FONTS[name];
+  if (!family || document.getElementById(`bbl-font-${family}`)) return;
+  const link = document.createElement("link");
+  link.id = `bbl-font-${family}`;
+  link.rel = "stylesheet";
+  link.href = `https://fonts.googleapis.com/css2?family=${family}&display=swap`;
+  document.head.append(link);
+}
+
 // Per-boss bar state that survives Boss Bar re-renders (it re-renders on every scene update):
 // uuid -> {shown: {remaining, pct}, animating: "intro" | "change" | null}
 const live = new Map();
@@ -58,6 +77,34 @@ Hooks.once("init", () => {
     config: true,
     type: Number,
     default: 6
+  });
+  game.settings.register(MODULE_ID, "style", {
+    name: "Bar style",
+    hint: "Layered: stacked bars with an ×N counter (MMO). Thorns: one thin bar split into segments, wrapped in black thorns, with the name in a brush font (dark fantasy).",
+    scope: "world",
+    config: true,
+    type: String,
+    choices: {layers: "Layered (MMO)", thorns: "Thorns (dark fantasy)"},
+    default: "layers",
+    onChange: () => { live.clear(); rerenderAll(); }
+  });
+  game.settings.register(MODULE_ID, "thornFont", {
+    name: "Thorns style: name font",
+    hint: "Font of the boss name in the Thorns style (Google Fonts).",
+    scope: "world",
+    config: true,
+    type: String,
+    choices: Object.fromEntries(Object.keys(THORN_FONTS).map(f => [f, f])),
+    default: "Rock Salt",
+    onChange: () => rerenderAll()
+  });
+  game.settings.register(MODULE_ID, "thornColor", {
+    name: "Thorns style: bar color",
+    scope: "world",
+    config: true,
+    type: String,
+    default: "#ff5a1f",
+    onChange: () => refreshAll()
   });
   game.settings.register(MODULE_ID, "showEffects", {
     name: "Show active effects",
@@ -194,7 +241,8 @@ function buildItem(li) {
 
   const root = document.createElement("div");
   root.className = "bbl-root";
-  root.innerHTML = `
+  if (thorns()) buildThorns(root, actor, hideName);
+  else root.innerHTML = `
     <div class="bbl-main">
       <div class="bbl-name"${hideName ? ' style="visibility:hidden"' : ""}>${foundry.utils.escapeHTML(actor.name)}</div>
       <div class="bbl-row">
@@ -239,7 +287,12 @@ function updateItem(li, actor, {instant = false, intro = false, resume = null} =
   root._bblLayers = target.layers;
 
   const effects = root.querySelector(".bbl-effects");
-  effects.innerHTML = activeEffects(actor).map(e => `
+  const isThorns = root.classList.contains("bbl-thorns");
+  if (isThorns && root._bblSegLayers !== target.layers) buildSegments_(root, actor, target.layers);
+  effects.innerHTML = activeEffects(actor).map(e => isThorns ? `
+    <div class="bbl-effect-tag${e.negative ? " negative" : ""}">
+      <img src="${e.img}" alt=""><span>${foundry.utils.escapeHTML(e.name)}</span>
+    </div>` : `
     <div class="bbl-effect${e.negative ? " negative" : ""}" data-tooltip="${foundry.utils.escapeHTML(e.name)}">
       <img src="${e.img}" alt="">
     </div>`).join("");
@@ -279,6 +332,7 @@ function updateItem(li, actor, {instant = false, intro = false, resume = null} =
 
 // colors for the bar that is currently showing as "remaining" r (1 = bottom bar)
 function paintBar(root, remaining) {
+  if (root.classList.contains("bbl-thorns")) return paintSegments(root, remaining);
   const layers = root._bblLayers ?? 1;
   const colors = layerColors();
   const top = layers - remaining;
@@ -289,9 +343,17 @@ function paintBar(root, remaining) {
 }
 
 function setFill(root, pct) {
-  root.querySelector(".bbl-fill").style.width = `${pct}%`;
-  root.querySelector(".bbl-pct").textContent = `${Math.round(pct)}%`;
+  const fill = activePart(root, ".bbl-fill");
+  if (fill) fill.style.width = `${pct}%`;
+  const label = root.querySelector(".bbl-pct");
+  if (label) label.textContent = `${Math.round(pct)}%`;
   remember(root, {pct});
+}
+
+/** In the Thorns style each layer is a segment; the parts being animated are the ones of the current segment. */
+function activePart(root, selector) {
+  if (!root.classList.contains("bbl-thorns")) return root.querySelector(selector);
+  return root.querySelector(`.bbl-seg[data-i="${root._bblActive ?? 0}"] ${selector}`);
 }
 
 function remember(root, patch) {
@@ -301,7 +363,8 @@ function remember(root, patch) {
 }
 
 function setChip(root, pct, {ms = 0, delay = 0} = {}) {
-  const chip = root.querySelector(".bbl-chip");
+  const chip = activePart(root, ".bbl-chip");
+  if (!chip) return;
   chip.style.transition = ms ? `width ${ms}ms ease-in ${delay}ms` : "none";
   if (!ms) void chip.offsetWidth;
   chip.style.width = `${pct}%`;
@@ -388,6 +451,111 @@ async function animateTo(root, from, to, mode) {
   if (root._bblToken !== token) return;
   if (to.remaining <= 0) paintBar(root, 0);
   finish();
+}
+
+/* -------------------------------------------- */
+/*  Thorns style                                */
+/* -------------------------------------------- */
+
+function buildThorns(root, actor, hideName) {
+  const font = game.settings.get(MODULE_ID, "thornFont");
+  loadFont(font);
+  root.classList.add("bbl-thorns");
+  root.style.setProperty("--bbl-thorn-font", `"${font}"`);
+  // Brush-style title: each word's first letter a little bigger ("HIDDEN KING").
+  const title = foundry.utils.escapeHTML(actor.name).split(/\s+/).map(w => `<span class="bbl-word"><span class="bbl-initial">${w.charAt(0)}</span>${w.slice(1)}</span>`).join(" ");
+  root.innerHTML = `
+    <div class="bbl-main">
+      <div class="bbl-name"${hideName ? ' style="visibility:hidden"' : ""}>${title}</div>
+      <div class="bbl-thornbar">
+        <svg class="bbl-briars" aria-hidden="true"></svg>
+        <div class="bbl-segs"></div>
+      </div>
+      <div class="bbl-effects"></div>
+    </div>`;
+  const bar = root.querySelector(".bbl-thornbar");
+  const seed = [...actor.uuid].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
+  const draw = () => drawBriars(root.querySelector(".bbl-briars"), bar.clientWidth, bar.clientHeight, seed);
+  requestAnimationFrame(draw);
+  new ResizeObserver(draw).observe(bar);
+}
+
+/** One segment per layer, left to right from the bottom layer; widths follow each layer's HP. */
+function buildSegments_(root, actor, layers) {
+  const per = getHpPerLayer(actor);
+  const max = computeState(actor).max;
+  const sizes = Array.from({length: layers}, (_, i) => (i === 0 ? max - (layers - 1) * per : per));
+  root.querySelector(".bbl-segs").innerHTML = sizes.map((s, i) => `
+    <div class="bbl-seg" data-i="${i}" style="flex-grow:${s}">
+      <div class="bbl-chip"></div><div class="bbl-fill"></div>
+    </div>`).join("");
+  root._bblSegLayers = layers;
+}
+
+/** `remaining` layers left: the ones left of the current segment are full, the ones right of it empty. */
+function paintSegments(root, remaining) {
+  root.style.setProperty("--bbl-thorn-color", game.settings.get(MODULE_ID, "thornColor") || "#ff5a1f");
+  const active = Math.max(0, remaining - 1);
+  root._bblActive = active;
+  for (const seg of root.querySelectorAll(".bbl-seg")) {
+    const i = Number(seg.dataset.i);
+    if (i === active && remaining > 0) continue;
+    const w = (i < active) ? "100%" : "0%";
+    seg.querySelector(".bbl-fill").style.width = w;
+    const chip = seg.querySelector(".bbl-chip");
+    chip.style.transition = "none";
+    chip.style.width = w;
+  }
+  remember(root, {remaining});
+}
+
+/** Black scribbled briars along the bar, with thorns, and bigger spikes flaring out of both ends. */
+function drawBriars(svg, w, h, seed) {
+  if (!svg || w < 20) return;
+  let s = seed || 1;
+  const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const pad = 40; // room for the end spikes
+  const W = w + pad * 2, H = h + 36, top = 18, bottom = 18 + h;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("width", W);
+  svg.setAttribute("height", H);
+  svg.style.left = `-${pad}px`;
+  svg.style.top = "-18px";
+  const paths = [];
+  // A wobbly line along y with thorns pointing away from the bar (dir -1 up, +1 down).
+  const vine = (y, dir, jitter) => {
+    let d = `M ${pad - 6} ${y + (rnd() - 0.5) * jitter}`;
+    const thornsD = [];
+    for (let x = pad - 6; x < pad + w + 6;) {
+      x += 5 + rnd() * 9;
+      const yy = y + (rnd() - 0.5) * jitter;
+      d += ` L ${x.toFixed(1)} ${yy.toFixed(1)}`;
+      if (rnd() < 0.32) {
+        const len = 3 + rnd() * 9, lean = (rnd() - 0.5) * 10;
+        thornsD.push(`M ${(x - 2).toFixed(1)} ${yy.toFixed(1)} L ${(x + lean).toFixed(1)} ${(yy + dir * len).toFixed(1)} L ${(x + 2).toFixed(1)} ${yy.toFixed(1)}`);
+      }
+    }
+    paths.push(`<path d="${d}" class="bbl-vine"/>`);
+    if (thornsD.length) paths.push(`<path d="${thornsD.join(" ")}" class="bbl-thorn"/>`);
+  };
+  vine(top - 1, -1, 3); vine(top + 1, -1, 4);
+  vine(bottom + 1, 1, 3); vine(bottom - 1, 1, 4);
+  // End caps: a burst of long spikes on each side.
+  const burst = (cx, side) => {
+    const cy = (top + bottom) / 2;
+    const parts = [];
+    for (let k = 0; k < 11; k++) {
+      const ang = (side < 0 ? Math.PI : 0) + (rnd() - 0.5) * 2.4;
+      const len = 12 + rnd() * 30;
+      const ex = cx + Math.cos(ang) * len, ey = cy + Math.sin(ang) * len * 0.75;
+      const nx = -Math.sin(ang) * 1.6, ny = Math.cos(ang) * 1.6;
+      parts.push(`M ${(cx + nx).toFixed(1)} ${(cy + ny).toFixed(1)} L ${ex.toFixed(1)} ${ey.toFixed(1)} L ${(cx - nx).toFixed(1)} ${(cy - ny).toFixed(1)} Z`);
+    }
+    paths.push(`<path d="${parts.join(" ")}" class="bbl-spike"/>`);
+  };
+  burst(pad - 2, -1);
+  burst(pad + w + 2, 1);
+  svg.innerHTML = paths.join("");
 }
 
 /* -------------------------------------------- */
