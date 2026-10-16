@@ -11,10 +11,12 @@ A Foundry VTT v13 add-on for [theripper93's Boss Bar](https://github.com/theripp
 ## Styles
 Pick one in the module settings (**Bar style**):
 - **Layered (MMO):** stacked bars with an `×N` counter, the percentage in the middle and effect icons.
-- **Thorns (dark fantasy):** the boss name in a brush font above one thin bar wrapped in black thorns, with spikes flaring
-  out of both ends. Each HP layer is a segment, and the bar drains from right to left. Effects are listed below with their
-  names. The name font and the bar color are in the settings: Rock Salt, Permanent Marker, Cabin Sketch or Fredericka the
-  Great, from Google Fonts under the SIL Open Font License.
+- **Thorns (dark fantasy):** the boss name in a brush font, touching a thin orange bar.
+  - **Thorns:** the bar sits on a dense band of crossed black scribbles, and bundles of long strokes flare out of both ends.
+  - **Segments:** each HP layer is a segment, and the bar drains from right to left.
+  - **Effects:** listed below, with their names in capitals.
+  - **Settings:** the name font and the bar color. The fonts come from Google Fonts, under the SIL Open Font License:
+    Covered By Your Grace (the default), Sedgwick Ave Display, Reenie Beanie, Rock Salt or Permanent Marker.
 
 ## Usage
 1. Install and enable **Bossbar** and **Boss Bar Layers**.

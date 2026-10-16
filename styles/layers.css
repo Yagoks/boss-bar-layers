@@ -143,30 +143,31 @@
 /* Thorns style (dark fantasy) -------------------------------- */
 #boss-bar .bbl-root.bbl-thorns {
   --bbl-thorn-color: #ff5a1f;
-  --bbl-thorn-font: "Rock Salt";
+  --bbl-thorn-font: "Covered By Your Grace";
   display: block;
-  padding: 4px 48px 12px;
+  padding: 2px 56px 12px;
 }
 #boss-bar .bbl-thorns .bbl-main { gap: 0; align-items: stretch; }
 #boss-bar .bbl-thorns .bbl-name {
   position: relative;
-  z-index: 2;
-  margin-bottom: -6px;
+  z-index: 3;
+  margin-bottom: -17px;
   font-family: var(--bbl-thorn-font), "Signika", cursive;
   font-weight: 400;
-  font-size: 30px;
-  letter-spacing: 1px;
+  font-size: 40px;
+  line-height: 1;
+  letter-spacing: 1.5px;
   text-transform: uppercase;
-  color: #f4ece2;
-  text-shadow: 0 0 2px #000, 0 0 6px #000, 0 0 14px rgba(0, 0, 0, 0.9);
+  color: #f3ead8;
+  text-shadow: 0 0 2px #000, 0 2px 4px #000, 0 0 16px rgba(0, 0, 0, 0.85);
   overflow: visible;
 }
 #boss-bar .bbl-thorns .bbl-initial { font-size: 1.3em; }
 #boss-bar .bbl-thorns .bbl-word + .bbl-word { margin-left: 0.35em; }
 #boss-bar .bbl-thornbar {
   position: relative;
-  height: 14px;
-  margin: 18px 0;
+  height: 11px;
+  margin: 22px 0 20px;
 }
 #boss-bar .bbl-briars {
   position: absolute;
@@ -174,51 +175,49 @@
   overflow: visible;
   z-index: 1;
 }
-#boss-bar .bbl-briars .bbl-vine { fill: none; stroke: #050404; stroke-width: 1.6; stroke-linejoin: round; }
-#boss-bar .bbl-briars .bbl-thorn { fill: #050404; stroke: #050404; stroke-width: 0.6; }
-#boss-bar .bbl-briars .bbl-spike { fill: #050404; }
+#boss-bar .bbl-briars .bbl-scribble { fill: none; stroke: #070505; stroke-width: 1.5; stroke-linecap: round; opacity: 0.95; }
+#boss-bar .bbl-briars .bbl-scribble.bold { stroke-width: 2.7; opacity: 1; }
+/* The bar sits on top of the scribbles; the gap between segments shows them. */
 #boss-bar .bbl-segs {
   position: absolute;
   inset: 0;
+  z-index: 2;
   display: flex;
-  gap: 6px;
-  padding: 0 2px;
-  background: #050404;
+  gap: 7px;
 }
 #boss-bar .bbl-seg {
   position: relative;
   flex-basis: 0;
   min-width: 4px;
   height: 100%;
-  background: rgba(60, 14, 6, 0.85);
+  background: rgba(70, 14, 6, 0.9);
   overflow: hidden;
 }
 #boss-bar .bbl-seg > div { position: absolute; top: 0; left: 0; height: 100%; }
-#boss-bar .bbl-thorns .bbl-chip { background: #ffd2a8; opacity: 0.9; }
+#boss-bar .bbl-thorns .bbl-chip { background: #ffb98a; opacity: 0.85; }
+/* Flat orange with a faint dry-brush streak. */
 #boss-bar .bbl-thorns .bbl-fill {
   border-right: none;
-  background: linear-gradient(to bottom,
-    color-mix(in srgb, var(--bbl-thorn-color) 65%, #fff) 0%,
-    var(--bbl-thorn-color) 40%,
-    color-mix(in srgb, var(--bbl-thorn-color) 65%, #000) 100%);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--bbl-thorn-color) 70%, transparent);
+  background:
+    repeating-linear-gradient(100deg, rgba(255, 255, 255, 0.07) 0 3px, transparent 3px 11px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--bbl-thorn-color) 85%, #fff) 0%, var(--bbl-thorn-color) 45%, color-mix(in srgb, var(--bbl-thorn-color) 80%, #000) 100%);
 }
 #boss-bar .bbl-thorns .bbl-effects {
   justify-content: center;
-  gap: 14px;
-  padding-top: 2px;
+  gap: 16px;
+  padding-top: 0;
 }
 #boss-bar .bbl-effect-tag {
   display: flex;
   align-items: center;
-  gap: 5px;
-  font-family: "Signika", sans-serif;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 1.5px;
+  gap: 6px;
+  font-family: "Signika", "Arial Black", sans-serif;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 1px;
   text-transform: uppercase;
-  color: #d8d2c8;
-  text-shadow: 0 0 3px #000, 0 0 6px #000;
+  color: #b9b2a8;
+  text-shadow: 0 0 3px #000, 0 1px 2px #000;
 }
-#boss-bar .bbl-effect-tag img { width: 18px; height: 18px; border: none; object-fit: contain; filter: drop-shadow(0 0 2px #000); }
-#boss-bar .bbl-effect-tag.negative { color: #ff8f7a; }
+#boss-bar .bbl-effect-tag img { width: 20px; height: 20px; border: none; object-fit: contain; filter: drop-shadow(0 0 2px #000); }
+#boss-bar .bbl-effect-tag.negative { color: #e98a78; }

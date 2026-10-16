@@ -9,10 +9,11 @@ const CHIP_MS = 450;
 
 // Brush/sketch fonts for the Thorns style (Google Fonts, SIL Open Font License), loaded on demand.
 const THORN_FONTS = {
+  "Covered By Your Grace": "Covered+By+Your+Grace",
+  "Sedgwick Ave Display": "Sedgwick+Ave+Display",
+  "Reenie Beanie": "Reenie+Beanie",
   "Rock Salt": "Rock+Salt",
-  "Permanent Marker": "Permanent+Marker",
-  "Cabin Sketch": "Cabin+Sketch:wght@700",
-  "Fredericka the Great": "Fredericka+the+Great"
+  "Permanent Marker": "Permanent+Marker"
 };
 const thorns = () => game.settings.get(MODULE_ID, "style") === "thorns";
 
@@ -95,7 +96,7 @@ Hooks.once("init", () => {
     config: true,
     type: String,
     choices: Object.fromEntries(Object.keys(THORN_FONTS).map(f => [f, f])),
-    default: "Rock Salt",
+    default: "Covered By Your Grace",
     onChange: () => rerenderAll()
   });
   game.settings.register(MODULE_ID, "thornColor", {
@@ -509,53 +510,60 @@ function paintSegments(root, remaining) {
   remember(root, {remaining});
 }
 
-/** Black scribbled briars along the bar, with thorns, and bigger spikes flaring out of both ends. */
+/**
+ * A dense band of crossed black scribbles behind the bar (like hatching drawn with a dry brush), strokes poking out
+ * above and below, and a bundle of long crossed strokes flaring out of each end.
+ */
 function drawBriars(svg, w, h, seed) {
   if (!svg || w < 20) return;
   let s = seed || 1;
   const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
-  const pad = 40; // room for the end spikes
-  const W = w + pad * 2, H = h + 36, top = 18, bottom = 18 + h;
+  const pad = 46;                 // room for the end bundles
+  const band = h * 0.95 + 5;      // half-height of the scribble band around the bar's middle
+  const W = w + pad * 2, H = band * 2 + 24, cy = H / 2;
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   svg.setAttribute("width", W);
   svg.setAttribute("height", H);
   svg.style.left = `-${pad}px`;
-  svg.style.top = "-18px";
-  const paths = [];
-  // A wobbly line along y with thorns pointing away from the bar (dir -1 up, +1 down).
-  const vine = (y, dir, jitter) => {
-    let d = `M ${pad - 6} ${y + (rnd() - 0.5) * jitter}`;
-    const thornsD = [];
-    for (let x = pad - 6; x < pad + w + 6;) {
-      x += 5 + rnd() * 9;
-      const yy = y + (rnd() - 0.5) * jitter;
-      d += ` L ${x.toFixed(1)} ${yy.toFixed(1)}`;
-      if (rnd() < 0.32) {
-        const len = 3 + rnd() * 9, lean = (rnd() - 0.5) * 10;
-        thornsD.push(`M ${(x - 2).toFixed(1)} ${yy.toFixed(1)} L ${(x + lean).toFixed(1)} ${(yy + dir * len).toFixed(1)} L ${(x + 2).toFixed(1)} ${yy.toFixed(1)}`);
-      }
-    }
-    paths.push(`<path d="${d}" class="bbl-vine"/>`);
-    if (thornsD.length) paths.push(`<path d="${thornsD.join(" ")}" class="bbl-thorn"/>`);
+  svg.style.top = `${h / 2 - cy}px`;
+  const thin = [], thick = [];
+  // One brush stroke: a slightly bent line, thicker or thinner.
+  const stroke = (x1, y1, x2, y2, bold) => {
+    const mx = (x1 + x2) / 2 + (rnd() - 0.5) * 4, my = (y1 + y2) / 2 + (rnd() - 0.5) * 4;
+    (bold ? thick : thin).push(`M${x1.toFixed(1)} ${y1.toFixed(1)}Q${mx.toFixed(1)} ${my.toFixed(1)} ${x2.toFixed(1)} ${y2.toFixed(1)}`);
   };
-  vine(top - 1, -1, 3); vine(top + 1, -1, 4);
-  vine(bottom + 1, 1, 3); vine(bottom - 1, 1, 4);
-  // End caps: a burst of long spikes on each side.
-  const burst = (cx, side) => {
-    const cy = (top + bottom) / 2;
-    const parts = [];
-    for (let k = 0; k < 11; k++) {
-      const ang = (side < 0 ? Math.PI : 0) + (rnd() - 0.5) * 2.4;
-      const len = 12 + rnd() * 30;
-      const ex = cx + Math.cos(ang) * len, ey = cy + Math.sin(ang) * len * 0.75;
-      const nx = -Math.sin(ang) * 1.6, ny = Math.cos(ang) * 1.6;
-      parts.push(`M ${(cx + nx).toFixed(1)} ${(cy + ny).toFixed(1)} L ${ex.toFixed(1)} ${ey.toFixed(1)} L ${(cx - nx).toFixed(1)} ${(cy - ny).toFixed(1)} Z`);
+  // The band: short diagonal strokes leaning both ways, so they cross into X marks.
+  for (let x = pad - 4; x < pad + w + 4; x += 1.1 + rnd() * 1.9) {
+    const n = 2 + Math.floor(rnd() * 2);
+    for (let k = 0; k < n; k++) {
+      const up = band * (0.6 + rnd() * 0.55), down = band * (0.6 + rnd() * 0.55);
+      // Lean about 45° one way or the other, so neighbours cross into X marks.
+      const lean = (rnd() < 0.5 ? -1 : 1) * (up + down) * (0.6 + rnd() * 0.6);
+      stroke(x - lean / 2, cy - up, x + lean / 2, cy + down, rnd() < 0.35);
     }
-    paths.push(`<path d="${parts.join(" ")}" class="bbl-spike"/>`);
+    // Now and then a longer stroke pokes out above or below, at a slant.
+    if (rnd() < 0.07) {
+      const dir = rnd() < 0.5 ? -1 : 1, len = band * (1.3 + rnd() * 0.8);
+      stroke(x, cy, x + (rnd() < 0.5 ? -1 : 1) * len * 0.7, cy + dir * len, true);
+    }
+  }
+  // A few loose horizontal scratches along the band.
+  for (let k = 0; k < Math.max(4, w / 60); k++) {
+    const x = pad + rnd() * w, len = 20 + rnd() * 50, y = cy + (rnd() - 0.5) * band * 1.4;
+    stroke(x, y, x + len, y + (rnd() - 0.5) * 6, false);
+  }
+  // End bundles: long strokes crossing each other, mostly horizontal, sticking out past the bar.
+  const bundle = (x0, side) => {
+    for (let k = 0; k < 14; k++) {
+      const len = 22 + rnd() * 30, ang = (rnd() - 0.5) * 1.3;
+      const x1 = x0 - side * (6 + rnd() * 16), y1 = cy + (rnd() - 0.5) * band * 1.2;
+      const x2 = x1 + side * Math.cos(ang) * len, y2 = y1 + Math.sin(ang) * len * 0.8;
+      stroke(x1, y1, x2, y2, rnd() < 0.5);
+    }
   };
-  burst(pad - 2, -1);
-  burst(pad + w + 2, 1);
-  svg.innerHTML = paths.join("");
+  bundle(pad, -1);
+  bundle(pad + w, 1);
+  svg.innerHTML = `<path d="${thin.join("")}" class="bbl-scribble"/><path d="${thick.join("")}" class="bbl-scribble bold"/>`;
 }
 
 /* -------------------------------------------- */
