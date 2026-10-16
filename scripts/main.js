@@ -95,6 +95,16 @@ Hooks.once("init", () => {
     default: "Covered By Your Grace",
     onChange: () => rerenderAll()
   });
+  game.settings.register(MODULE_ID, "thornSegments", {
+    name: "Thorns style: segments",
+    hint: "The Thorns bar is one bar or two equal halves of the boss's HP.",
+    scope: "world",
+    config: true,
+    type: Number,
+    choices: {1: "1", 2: "2"},
+    default: 2,
+    onChange: () => { live.clear(); rerenderAll(); }
+  });
   game.settings.register(MODULE_ID, "thornColor", {
     name: "Thorns style: bar color",
     scope: "world",
@@ -216,11 +226,12 @@ function layerColors() {
   return list.length ? list : ["#f4b6c2", "#4f86d9"];
 }
 
-function computeState(actor) {
+/** @param {number|null} segments  Split the HP into this many equal bars instead of fixed-size layers (Thorns). */
+function computeState(actor, segments = null) {
   const sys = actor.system;
   const hp = Number(foundry.utils.getProperty(sys, bossbarSetting("currentHpPath", "attributes.hp.value"))) || 0;
   const max = Math.max(1, Number(foundry.utils.getProperty(sys, bossbarSetting("maxHpPath", "attributes.hp.max"))) || 1);
-  const perLayer = getHpPerLayer(actor);
+  const perLayer = segments ? max / segments : getHpPerLayer(actor);
   const clamped = Math.min(Math.max(hp, 0), max);
   // Full bars from the top; the last (bottom) bar holds whatever is left over.
   const layers = Math.max(1, Math.ceil(max / perLayer - 1e-9));
@@ -307,11 +318,11 @@ function buildItem(li, style) {
 function updateItem(li, actor, {instant = false, intro = false, resume = null} = {}) {
   const root = li.querySelector(".bbl-root");
   if (!root) return;
-  const target = computeState(actor);
+  const isThorns = root.classList.contains("bbl-thorns");
+  const target = computeState(actor, isThorns ? thornSegments() : null);
   root._bblLayers = target.layers;
 
   const effects = root.querySelector(".bbl-effects");
-  const isThorns = root.classList.contains("bbl-thorns");
   if (isThorns && root._bblSegLayers !== target.layers) buildSegments_(root, actor, target.layers);
   effects.innerHTML = activeEffects(actor).map(e => isThorns ? `
     <div class="bbl-effect-tag${e.negative ? " negative" : ""}">
@@ -499,21 +510,50 @@ function buildThorns(root, actor, hideName) {
     </div>`;
   const bar = root.querySelector(".bbl-thornbar");
   const seed = [...actor.uuid].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
-  const draw = () => drawBriars(root.querySelector(".bbl-briars"), bar.clientWidth, bar.clientHeight, seed);
+  root._bblSeed = seed;
+  const draw = () => { drawBriars(root.querySelector(".bbl-briars"), bar.clientWidth, bar.clientHeight, seed); notchSegments(root); };
   requestAnimationFrame(draw);
   new ResizeObserver(draw).observe(bar);
 }
 
-/** One segment per layer, left to right from the bottom layer; widths follow each layer's HP. */
+const thornSegments = () => Math.min(2, Math.max(1, Number(game.settings.get(MODULE_ID, "thornSegments")) || 2));
+
+/** One or two equal segments, left to right; the right one drains first. */
 function buildSegments_(root, actor, layers) {
-  const per = getHpPerLayer(actor);
-  const max = computeState(actor).max;
-  const sizes = Array.from({length: layers}, (_, i) => (i === 0 ? max - (layers - 1) * per : per));
-  root.querySelector(".bbl-segs").innerHTML = sizes.map((s, i) => `
-    <div class="bbl-seg" data-i="${i}" style="flex-grow:${s}">
+  root.querySelector(".bbl-segs").innerHTML = Array.from({length: layers}, (_, i) => `
+    <div class="bbl-seg" data-i="${i}">
       <div class="bbl-chip"></div><div class="bbl-fill"></div>
     </div>`).join("");
   root._bblSegLayers = layers;
+  notchSegments(root);
+}
+
+/** Rounded segments with a few nicks cut into their top and bottom edges (a clip path, redrawn on resize). */
+function notchSegments(root) {
+  for (const seg of root.querySelectorAll(".bbl-seg")) {
+    const w = seg.clientWidth, h = seg.clientHeight;
+    if (w < 20 || h < 4) continue;
+    let s = (root._bblSeed ?? 7) + Number(seg.dataset.i) * 977;
+    const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+    const r = Math.min(7, h / 2);
+    const nicks = (from, to) => {
+      const list = [];
+      const n = Math.max(2, Math.round((to - from) / 80));
+      for (let k = 0; k < n; k++) {
+        const x = from + ((k + 0.2 + rnd() * 0.6) / n) * (to - from);
+        const nw = 5 + rnd() * 9, depth = h * (0.18 + rnd() * 0.22), apex = x + nw * (0.2 + rnd() * 0.6);
+        list.push([x, nw, depth, apex]);
+      }
+      return list;
+    };
+    const f = v => v.toFixed(1);
+    let d = `M ${f(r)} 0`;
+    for (const [x, nw, depth, apex] of nicks(r + 6, w - r - 16)) d += ` L ${f(x)} 0 L ${f(apex)} ${f(depth)} L ${f(x + nw)} 0`;
+    d += ` L ${f(w - r)} 0 Q ${f(w)} 0 ${f(w)} ${f(r)} L ${f(w)} ${f(h - r)} Q ${f(w)} ${f(h)} ${f(w - r)} ${f(h)}`;
+    for (const [x, nw, depth, apex] of nicks(r + 6, w - r - 16).reverse()) d += ` L ${f(x + nw)} ${f(h)} L ${f(apex)} ${f(h - depth)} L ${f(x)} ${f(h)}`;
+    d += ` L ${f(r)} ${f(h)} Q 0 ${f(h)} 0 ${f(h - r)} L 0 ${f(r)} Q 0 0 ${f(r)} 0 Z`;
+    seg.style.clipPath = `path("${d}")`;
+  }
 }
 
 /** `remaining` layers left: the ones left of the current segment are full, the ones right of it empty. */
@@ -542,7 +582,7 @@ function drawBriars(svg, w, h, seed) {
   let s = seed || 1;
   const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
   const pad = 46;                 // room for the end bundles
-  const band = h * 0.95 + 5;      // half-height of the scribble band around the bar's middle
+  const band = h * 0.75 + 4;      // half-height of the scribble band around the bar's middle
   const W = w + pad * 2, H = band * 2 + 24, cy = H / 2;
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   svg.setAttribute("width", W);
